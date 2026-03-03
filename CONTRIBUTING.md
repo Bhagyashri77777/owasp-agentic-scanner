@@ -4,18 +4,90 @@ Thank you for your interest in contributing!
 
 ## Getting Started
 
+### 1. Fork the Repository
+
+1. Go to [https://github.com/NP-compete/owasp-agentic-ai-security-scanner](https://github.com/NP-compete/owasp-agentic-ai-security-scanner)
+2. Click the "Fork" button in the top right
+3. This creates a copy in your GitHub account
+
+### 2. Clone Your Fork
+
 ```bash
-git clone https://github.com/NP-compete/owasp-agentic-ai-security-scanner.git
+git clone https://github.com/YOUR-USERNAME/owasp-agentic-ai-security-scanner.git
 cd owasp-agentic-ai-security-scanner
+```
+
+### 3. Add Upstream Remote
+
+```bash
+git remote add upstream https://github.com/NP-compete/owasp-agentic-ai-security-scanner.git
+git remote -v  # Verify you have both origin (your fork) and upstream (original repo)
+```
+
+### 4. Install Development Dependencies
+
+```bash
 make install-dev
 ```
 
 ## Development Workflow
 
-1. Create a branch from `main`
-2. Make your changes
-3. Run checks: `make pre-commit`
-4. Submit a PR
+### 1. Sync Your Fork
+
+Before creating a new branch, sync with the latest changes:
+
+```bash
+git checkout main
+git fetch upstream
+git merge upstream/main
+git push origin main  # Update your fork
+```
+
+### 2. Create a Feature Branch
+
+```bash
+git checkout -b feature/your-feature-name
+```
+
+### 3. Make Your Changes
+
+- Write code following our code standards (see below)
+- Add tests for new features
+- Update documentation if needed
+
+### 4. Run Checks
+
+```bash
+make pre-commit  # Runs linting, formatting, and tests
+```
+
+### 5. Commit Your Changes
+
+```bash
+git add .
+git commit -m "feat: Add your feature description"
+```
+
+We follow [Conventional Commits](https://www.conventionalcommits.org/):
+- `feat:` - New feature
+- `fix:` - Bug fix
+- `docs:` - Documentation changes
+- `test:` - Test changes
+- `refactor:` - Code refactoring
+
+### 6. Push to Your Fork
+
+```bash
+git push origin feature/your-feature-name
+```
+
+### 7. Submit a Pull Request
+
+1. Go to your fork on GitHub
+2. Click "Pull Request" button
+3. Select your feature branch
+4. Fill out the PR template
+5. Submit the PR
 
 ## Code Standards
 

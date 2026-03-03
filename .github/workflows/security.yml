@@ -14,6 +14,7 @@ jobs:
       contents: read
       actions: read
       security-events: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
 
@@ -21,6 +22,7 @@ jobs:
         uses: astral-sh/setup-uv@v4
         with:
           version: "latest"
+          enable-cache: true
 
       - name: Set up Python
         run: uv python install 3.12
@@ -28,9 +30,28 @@ jobs:
       - name: Install dependencies
         run: uv sync
 
-      - name: Run scanner on self
-        # Scan CLI and reporters only (rules/ contains pattern strings that trigger false positives)
-        run: uv run owasp-scan scan src/owasp_agentic_scanner/reporters --format sarif --output results.sarif || true
+      - name: Run scanner on self (with exclusions)
+        id: scan
+        # Use CI config to exclude rules/ directory (avoids false positives from regex patterns)
+        run: |
+          uv run owasp-scan scan src/ \
+            --config .owasp-scan-ci.toml \
+            --format sarif \
+            --output results.sarif || true
+
+          # Check if scan found CRITICAL or HIGH severity issues
+          if [ -f results.sarif ]; then
+            CRITICAL_COUNT=$(grep -o '"level":"error"' results.sarif | wc -l | tr -d ' ')
+            echo "critical_count=$CRITICAL_COUNT" >> $GITHUB_OUTPUT
+
+            if [ "$CRITICAL_COUNT" -gt 0 ]; then
+              echo "::error::Found $CRITICAL_COUNT critical/high severity security issues"
+            else
+              echo "No critical/high severity issues found"
+            fi
+          else
+            echo "critical_count=0" >> $GITHUB_OUTPUT
+          fi
 
       - name: Upload SARIF results
         uses: github/codeql-action/upload-sarif@v4
@@ -39,9 +60,50 @@ jobs:
         with:
           sarif_file: results.sarif
 
-      - name: Upload SARIF as artifact (fallback)
+      - name: Upload SARIF as artifact
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: sarif-results
           path: results.sarif
+
+      - name: Fail if critical issues found
+        if: steps.scan.outputs.critical_count > 0
+        run: |
+          echo "::error::Security scan failed due to ${{ steps.scan.outputs.critical_count }} critical/high severity findings"
+          echo "Review the SARIF results for details"
+          exit 1
+
+  dependency-scan:
+    name: Dependency Vulnerability Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --all-extras
+
+      - name: Export requirements for scanning
+        run: uv export --no-hashes --format requirements-txt > requirements.txt
+
+      - name: Run pip-audit
+        continue-on-error: true
+        run: |
+          uv pip install pip-audit
+          uv run pip-audit --desc --requirement requirements.txt || echo "::warning::pip-audit found vulnerabilities or encountered errors"
+
+      - name: Upload requirements artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: requirements
+          path: requirements.txt

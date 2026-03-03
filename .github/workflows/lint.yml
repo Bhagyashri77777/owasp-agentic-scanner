@@ -17,6 +17,7 @@ jobs:
         uses: astral-sh/setup-uv@v4
         with:
           version: "latest"
+          enable-cache: true
 
       - name: Set up Python
         run: uv python install 3.12
@@ -29,3 +30,6 @@ jobs:
 
       - name: Run ruff format check
         run: uv run ruff format --check src tests
+
+      - name: Run pre-commit hooks
+        run: uv run pre-commit run --all-files

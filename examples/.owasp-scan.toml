@@ -1,0 +1,154 @@
+# OWASP Agentic AI Scanner Configuration Example
+# Place this file at the root of your project as .owasp-scan.toml
+
+# =============================================================================
+# RULES CONFIGURATION
+# =============================================================================
+
+# Specify which rules to enable (empty list = all rules)
+# Available: AA01-AA10
+enabled_rules = []
+
+# Disable specific rules if needed
+disabled_rules = []
+# Example: disabled_rules = ["AA09", "AA10"]
+
+# =============================================================================
+# SCANNING BEHAVIOR
+# =============================================================================
+
+# Use parallel scanning (recommended for large projects)
+parallel = true
+
+# Number of worker threads (0 = auto-detect based on CPU cores)
+max_workers = 0
+
+# Maximum file size to scan (in bytes)
+# Files larger than this will be skipped
+max_file_size = 10485760  # 10MB
+
+# =============================================================================
+# FILTERING
+# =============================================================================
+
+# Minimum severity level to report
+# Options: "critical", "high", "medium", "low", "info"
+min_severity = "medium"
+
+# File patterns to exclude from scanning
+exclude_patterns = [
+    "**/*_pb2.py",           # Generated protobuf files
+    "**/*_pb2_grpc.py",      # Generated gRPC files
+    "**/migrations/**",      # Database migrations
+    "**/.venv/**",           # Virtual environments
+    "**/venv/**",
+    "**/node_modules/**",
+]
+
+# File patterns to specifically include (overrides defaults)
+# Leave empty to use default extensions (.py, .js, .ts, etc.)
+include_patterns = []
+
+# =============================================================================
+# OUTPUT CONFIGURATION
+# =============================================================================
+
+# Output format: "console", "json", or "sarif"
+format = "console"
+
+# Output file path (empty string = stdout)
+# output_file = "security-report.json"
+
+# Show detailed findings
+verbose = false
+
+# =============================================================================
+# PERFORMANCE: CACHING
+# =============================================================================
+
+# Enable caching to speed up repeated scans
+# Only rescans files that have changed since last run
+use_cache = true
+
+# Directory to store cache files
+cache_dir = ".owasp-cache"
+
+# =============================================================================
+# GIT INTEGRATION
+# =============================================================================
+
+# Only scan files that changed in git
+# Useful for CI/CD to scan only PR changes
+only_git_changed = false
+
+# Git reference to compare against (for changed files)
+git_base_ref = "origin/main"
+
+# =============================================================================
+# BASELINE SUPPORT
+# =============================================================================
+
+# Path to baseline file (suppress known issues)
+# Create with: owasp-scan scan . --create-baseline --baseline-file .owasp-baseline.json
+# baseline_file = ".owasp-baseline.json"
+
+# Create a new baseline from current scan
+create_baseline = false
+
+# =============================================================================
+# PATHS
+# =============================================================================
+
+# Directories to always exclude from scanning
+exclude_dirs = [
+    "__pycache__",
+    ".git",
+    ".github",
+    ".gitlab",
+    "node_modules",
+    ".venv",
+    "venv",
+    ".tox",
+    "dist",
+    "build",
+    ".eggs",
+    "htmlcov",
+    "coverage",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".ruff_cache",
+]
+
+# =============================================================================
+# EXAMPLE CONFIGURATIONS FOR DIFFERENT USE CASES
+# =============================================================================
+
+# EXAMPLE 1: Strict CI/CD Pipeline
+# ----------------------------------
+# enabled_rules = ["AA01", "AA02", "AA05"]  # Only critical rules
+# min_severity = "high"
+# only_git_changed = true
+# git_base_ref = "origin/main"
+# format = "sarif"
+# output_file = "security-report.sarif"
+
+# EXAMPLE 2: Gradual Adoption in Existing Project
+# ------------------------------------------------
+# baseline_file = ".owasp-baseline.json"
+# min_severity = "high"
+# use_cache = true
+
+# EXAMPLE 3: Full Security Audit
+# -------------------------------
+# enabled_rules = []  # All rules
+# min_severity = "info"
+# verbose = true
+# format = "json"
+# output_file = "full-audit.json"
+
+# EXAMPLE 4: Fast Development Workflow
+# -------------------------------------
+# use_cache = true
+# only_git_changed = true
+# min_severity = "critical"
+# parallel = true
