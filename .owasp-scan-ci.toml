@@ -1,0 +1,20 @@
+# OWASP Agentic AI Scanner - CI Configuration
+# This config is used for GitHub Actions self-scanning
+
+# Exclude rules/ directory to avoid false positives from regex patterns in detection rules
+exclude_patterns = [
+    "**/rules/*.py",
+    "**/__pycache__/**",
+    "**/.venv/**",
+    "**/venv/**",
+]
+
+# Report all severities in CI
+min_severity = "info"
+
+# Enable parallel scanning for speed
+parallel = true
+
+# Use caching for faster scans
+use_cache = true
+cache_dir = ".owasp-cache"

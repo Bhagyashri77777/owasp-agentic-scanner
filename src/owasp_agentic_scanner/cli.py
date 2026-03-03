@@ -193,13 +193,139 @@ def scan(
         "-s",
         help="Minimum severity to report: critical, high, medium, low, info",
     ),
+    use_optimized: bool = typer.Option(
+        True,
+        "--optimized/--no-optimized",
+        help="Use optimized scanner with better resource management",
+    ),
+    use_cache: bool = typer.Option(
+        False,
+        "--cache/--no-cache",
+        help="Enable caching to skip unchanged files",
+    ),
+    cache_dir: str | None = typer.Option(
+        None,
+        "--cache-dir",
+        help="Custom cache directory (default: .owasp-scan-cache)",
+    ),
+    baseline_file: str | None = typer.Option(
+        None,
+        "--baseline",
+        "-b",
+        help="Baseline file to filter existing issues",
+    ),
+    create_baseline: str | None = typer.Option(
+        None,
+        "--create-baseline",
+        help="Create baseline file from current findings",
+    ),
+    config_file: str | None = typer.Option(
+        None,
+        "--config",
+        "-c",
+        help="Path to config file (.owasp-scan.toml)",
+    ),
+    git_diff: str | None = typer.Option(
+        None,
+        "--git-diff",
+        help="Only scan files changed from git ref (e.g., origin/main)",
+    ),
 ) -> None:
     """Scan a codebase for OWASP Agentic AI security risks."""
-    scan_path = Path(path)
+    # Input validation
+    valid_severities = {"critical", "high", "medium", "low", "info"}
+    if min_severity.lower() not in valid_severities:
+        console.print(
+            f"[red]Error: Invalid severity '{min_severity}'. Must be one of: {', '.join(valid_severities)}[/red]"
+        )
+        raise typer.Exit(1)
 
+    valid_formats = {"console", "json", "sarif"}
+    if format.lower() not in valid_formats:
+        console.print(
+            f"[red]Error: Invalid format '{format}'. Must be one of: {', '.join(valid_formats)}[/red]"
+        )
+        raise typer.Exit(1)
+
+    # Validate scan path
+    scan_path = Path(path)
     if not scan_path.exists():
         console.print(f"[red]Error: Path does not exist: {path}[/red]")
         raise typer.Exit(1)
+
+    # Validate cache directory if provided
+    if cache_dir:
+        try:
+            cache_path_obj = Path(cache_dir).resolve(strict=False)
+        except (OSError, ValueError) as e:
+            console.print(f"[red]Error: Invalid cache directory: {e}[/red]")
+            raise typer.Exit(1)
+
+        # Explicitly block dangerous directories FIRST (resolve them too)
+        dangerous_paths = [
+            Path("/etc").resolve(strict=False),
+            Path("/sys").resolve(strict=False),
+            Path("/proc").resolve(strict=False),
+            Path("/dev").resolve(strict=False),
+        ]
+        for danger in dangerous_paths:
+            try:
+                if cache_path_obj.is_relative_to(danger):
+                    console.print("[red]Error: Cannot use system directory for cache[/red]")
+                    raise typer.Exit(1)
+            except ValueError:
+                # is_relative_to raises ValueError on different drives (Windows)
+                pass
+
+        # Define allowed base directories
+        import tempfile
+
+        allowed_bases = [
+            Path.home(),  # User home directory
+            Path.cwd(),  # Current working directory
+            Path("/tmp").resolve(strict=False),  # Temp directory
+            Path(tempfile.gettempdir()).resolve(
+                strict=False
+            ),  # System temp (may differ from /tmp on macOS)
+        ]
+
+        # Check if resolved path is under any allowed base
+        is_allowed = False
+        for base in allowed_bases:
+            try:
+                if cache_path_obj.is_relative_to(base):
+                    is_allowed = True
+                    break
+            except ValueError:
+                # is_relative_to raises ValueError on different drives (Windows)
+                pass
+
+        if not is_allowed:
+            console.print("[red]Error: Cache directory must be under home, cwd, or /tmp[/red]")
+            raise typer.Exit(1)
+
+    # Load config file if specified
+    config = None
+    if config_file:
+        try:
+            from owasp_agentic_scanner.config import ScanConfig
+
+            config = ScanConfig.load(Path(config_file))
+            if format.lower() == "console":
+                console.print(f"[dim]Loaded config from: {config_file}[/dim]")
+        except ImportError:
+            logger.warning("Config module not available")
+        except Exception as e:
+            logger.warning(f"Failed to load config: {e}")
+
+    # Override config with CLI arguments if provided
+    if config:
+        if rules is None and hasattr(config, "enabled_rules"):
+            rules = ",".join(config.enabled_rules)
+        if min_severity == "info" and hasattr(config, "min_severity"):
+            min_severity = config.min_severity
+        if workers == 4 and hasattr(config, "max_workers") and config.max_workers > 0:
+            workers = config.max_workers
 
     # Get rules to use
     selected_rules = get_rules_by_filter(rules)
@@ -209,14 +335,139 @@ def scan(
         console.print(f"[bold]Rules:[/bold] {len(selected_rules)} active")
         console.print()
 
+    # Initialize cache if enabled
+    cache = None
+    files_to_scan = None
+    if use_cache:
+        try:
+            from owasp_agentic_scanner.cache import ScanCache
+
+            cache_path = Path(cache_dir) if cache_dir else None
+            cache = ScanCache(
+                project_root=scan_path if scan_path.is_dir() else scan_path.parent,
+                cache_dir=cache_path,
+            )
+            cache.load()
+            if format.lower() == "console":
+                console.print(f"[dim]Cache enabled: {cache.cache_file}[/dim]")
+        except ImportError:
+            logger.warning("Cache module not available, proceeding without cache")
+            use_cache = False
+        except Exception as e:
+            logger.warning(f"Failed to initialize cache: {e}")
+            use_cache = False
+
+    # Get files to scan from git diff if specified
+    if git_diff:
+        try:
+            from owasp_agentic_scanner.cache import GitAwareCache
+
+            git_cache = GitAwareCache(
+                project_root=scan_path if scan_path.is_dir() else scan_path.parent
+            )
+            changed_files = git_cache.get_changed_files(git_diff)
+            files_to_scan = list(changed_files)
+            if format.lower() == "console":
+                console.print(
+                    f"[dim]Scanning {len(files_to_scan)} files changed from {git_diff}[/dim]"
+                )
+        except ImportError:
+            logger.warning("Git integration not available, scanning all files")
+        except Exception as e:
+            logger.warning(f"Failed to get git diff: {e}, scanning all files")
+
     # Perform scan
-    if format.lower() == "console":
-        with console.status("[bold green]Scanning..."):
+    if use_optimized:
+        # Use new optimized scanner with cache and files_to_scan support
+        try:
+            from owasp_agentic_scanner.scanner import OptimizedScanner
+
+            scanner = OptimizedScanner(selected_rules, max_workers=workers)
+            if format.lower() == "console":
+                with console.status("[bold green]Scanning..."):
+                    findings = scanner.scan(
+                        scan_path, parallel=parallel, files_to_scan=files_to_scan, cache=cache
+                    )
+            else:
+                findings = scanner.scan(
+                    scan_path, parallel=parallel, files_to_scan=files_to_scan, cache=cache
+                )
+        except ImportError:
+            logger.warning("Optimized scanner not available, using standard scanner")
+            use_optimized = False
+        except TypeError as e:
+            # Scanner doesn't support new parameters - fall back
+            logger.warning(f"Scanner doesn't support cache/files_to_scan: {e}")
+            if format.lower() == "console":
+                with console.status("[bold green]Scanning..."):
+                    findings = scanner.scan(scan_path, parallel=parallel)
+            else:
+                findings = scanner.scan(scan_path, parallel=parallel)
+            # Manual filtering if needed
+            if git_diff and files_to_scan:
+                files_to_scan_set = set(files_to_scan)
+                findings = [f for f in findings if f.file_path in files_to_scan_set]
+
+    if not use_optimized:
+        # Use original scanner
+        if format.lower() == "console":
+            with console.status("[bold green]Scanning..."):
+                findings = scan_codebase(
+                    scan_path, selected_rules, parallel=parallel, max_workers=workers
+                )
+        else:
             findings = scan_codebase(
                 scan_path, selected_rules, parallel=parallel, max_workers=workers
             )
-    else:
-        findings = scan_codebase(scan_path, selected_rules, parallel=parallel, max_workers=workers)
+
+        # Manual filtering for old scanner
+        if git_diff and files_to_scan:
+            files_to_scan_set = set(files_to_scan)
+            findings = [f for f in findings if f.file_path in files_to_scan_set]
+
+    # Apply baseline filtering if specified
+    baseline = None
+    if baseline_file:
+        try:
+            from owasp_agentic_scanner.baseline import Baseline
+
+            baseline = Baseline(Path(baseline_file))
+            if baseline.baseline_file.exists():
+                baseline.load()
+                new_findings, baselined_count = baseline.filter_new_findings(findings)
+                findings = new_findings
+                if format.lower() == "console" and baselined_count > 0:
+                    console.print(f"[dim]Filtered {baselined_count} baselined findings[/dim]")
+        except ImportError:
+            logger.warning("Baseline module not available")
+        except Exception as e:
+            logger.warning(f"Failed to load baseline: {e}")
+
+    # Create baseline if requested
+    if create_baseline:
+        try:
+            from owasp_agentic_scanner.baseline import Baseline
+
+            new_baseline = Baseline(Path(create_baseline))
+            new_baseline.create_from_findings(findings)
+            new_baseline.save()
+            if format.lower() == "console":
+                console.print(
+                    f"[green]Baseline created: {create_baseline} ({len(findings)} findings)[/green]"
+                )
+        except ImportError:
+            logger.warning("Baseline module not available")
+        except Exception as e:
+            logger.error(f"Failed to create baseline: {e}")
+
+    # Save cache if enabled
+    if use_cache and cache:
+        try:
+            cache.save()
+            if format.lower() == "console":
+                console.print("[dim]Cache saved[/dim]")
+        except Exception as e:
+            logger.warning(f"Failed to save cache: {e}")
 
     # Filter by minimum severity
     severity_order = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}

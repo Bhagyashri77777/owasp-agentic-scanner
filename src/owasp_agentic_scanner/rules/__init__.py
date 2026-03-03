@@ -12,12 +12,20 @@ from owasp_agentic_scanner.rules.privilege_abuse import PrivilegeAbuseRule
 from owasp_agentic_scanner.rules.supply_chain import SupplyChainRule
 from owasp_agentic_scanner.rules.tool_misuse import ToolMisuseRule
 
+# Import AST-based rules (with fallback if not available)
+try:
+    from owasp_agentic_scanner.rules.code_execution_ast import CodeExecutionASTRule
+
+    USE_AST_RULES = True
+except ImportError:
+    USE_AST_RULES = False
+
 ALL_RULES: list[BaseRule] = [
     GoalHijackRule(),
     ToolMisuseRule(),
     PrivilegeAbuseRule(),
     SupplyChainRule(),
-    CodeExecutionRule(),
+    CodeExecutionASTRule() if USE_AST_RULES else CodeExecutionRule(),  # Use AST if available
     MemoryPoisoningRule(),
     ExcessiveAgencyRule(),
     InsecurePluginRule(),
