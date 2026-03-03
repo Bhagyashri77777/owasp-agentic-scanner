@@ -43,7 +43,6 @@ Homepage = "https://github.com/NP-compete/owasp-agentic-scanner"
 Repository = "https://github.com/NP-compete/owasp-agentic-scanner"
 Documentation = "https://github.com/NP-compete/owasp-agentic-scanner#readme"
 Issues = "https://github.com/NP-compete/owasp-agentic-scanner/issues"
-Changelog = "https://github.com/NP-compete/owasp-agentic-scanner/blob/main/CHANGELOG.md"
 
 [build-system]
 requires = ["hatchling"]

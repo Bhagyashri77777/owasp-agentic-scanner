@@ -262,7 +262,6 @@ Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for gui
 - [Detection Rules](docs/RULES.md)
 - [Extending the Scanner](docs/EXTENDING.md)
 - [Pre-commit Integration](docs/PRE_COMMIT.md)
-- [Changelog](CHANGELOG.md)
 
 ## 🔒 Security
 
