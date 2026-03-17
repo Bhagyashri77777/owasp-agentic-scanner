@@ -250,7 +250,7 @@ class ScanCache:
         """
         deleted_keys: list[str] = []
         for file_key in self.cache_data:
-            file_path = Path(file_key)
+            file_path = project_root / file_key
             if not file_path.exists() or not file_path.is_relative_to(project_root):
                 deleted_keys.append(file_key)
 
